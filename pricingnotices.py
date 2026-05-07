@@ -209,17 +209,17 @@ def _news_search(token: str, params: dict, size: int = 200) -> list[dict]:
 
 def fetch_todays_pricing_notices(token: str, lookback_days: int = 2) -> list[dict]:
     """
-    Pull all articles matching 'Pricing Notice' content type/category.
-    Falls back to keyword filter on title if the API doesn't support ContentType directly.
+    Pull pricing notices published in the last 24 hours.
+    lookback_days controls how far back the API search window goes (keep >= 2).
     Returns articles sorted newest-first, deduplicated by articleId.
     """
-    today      = dt.date.today()
-    from_date  = (today - dt.timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-    target_date = expected_publish_date(today)
+    now      = dt.datetime.now(tz=dt.timezone.utc)
+    cutoff   = now - dt.timedelta(hours=24)
+    from_date = (now - dt.timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
-    print(f"  Fetching pricing notices from {from_date} to {today} (expecting {target_date})")
+    print(f"  Fetching pricing notices published since {cutoff.strftime('%Y-%m-%d %H:%M')} UTC")
 
-    # Primary: Topic=Pricing Notice (matches the web dashboard label; precise)
+    # Primary: Topic=Pricing Notice
     try:
         arts = _news_search(token, {
             "FromDate": from_date,
@@ -241,12 +241,18 @@ def fetch_todays_pricing_notices(token: str, lookback_days: int = 2) -> list[dic
         ]
         print(f"  Broad search: {before} total -> {len(arts)} after title filter")
 
-    # Keep only articles from the expected publish date
-    arts = [
-        a for a in arts
-        if parse_article_date(a.get("publishedDate", "")) == target_date
-    ]
-    print(f"  After date filter ({target_date}): {len(arts)} article(s)")
+    # Keep only articles published in the last 24 hours
+    def published_dt(article: dict) -> Optional[dt.datetime]:
+        raw = article.get("publishedDate", "")
+        if not raw:
+            return None
+        try:
+            return dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    arts = [a for a in arts if (pub := published_dt(a)) and pub >= cutoff]
+    print(f"  After 24h filter: {len(arts)} article(s)")
 
     # Deduplicate and sort newest-first
     seen = set()

@@ -392,24 +392,13 @@ def render_article_html(article: dict) -> str:
     )
 
 
-def render_vertical_html(vertical_name: str, articles: list[dict]) -> str:
+def render_vertical_html(_vertical_name: str, articles: list[dict]) -> str:
     """
     Combine all articles for one vertical into a single injectable HTML string.
     Returns a placeholder string if no articles were found.
     """
-    heading = (
-        f'<p style="margin:0 0 12px 0;">'
-        f'<span style="font-size:18px; font-weight:bold; text-decoration:underline;">'
-        f'Pricing Notices &#8212; {vertical_name}'
-        f'</span></p>'
-    )
-
     if not articles:
-        return (
-            f'<span style="font-size:14px;">{heading}'
-            f'<p style="color:#999; font-style:italic;">No pricing notices found for today.</p>'
-            f'</span>'
-        )
+        return '<p style="color:#999; font-style:italic; font-size:14px;">No pricing notices found for today.</p>'
 
     body = "".join(render_article_html(a) for a in articles)
     count_note = (
@@ -417,7 +406,7 @@ def render_vertical_html(vertical_name: str, articles: list[dict]) -> str:
         f'{len(articles)} notice{"s" if len(articles) != 1 else ""} · '
         f'{dt.date.today().strftime("%d/%m/%Y")}</p>'
     )
-    return f'<span style="font-size:14px;">{heading}{body}{count_note}</span>'
+    return f'<span style="font-size:14px;">{body}{count_note}</span>'
 
 
 # ═════════════════════════════════════════════════════════════════════════════

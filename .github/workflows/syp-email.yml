@@ -1,0 +1,34 @@
+name: SYP News - Marketo Email Update
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [run-syp-email]
+
+jobs:
+  update-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Run email update script
+        env:
+          FASTMARKETS_SERVICE_NAME: ${{ secrets.FASTMARKETS_SERVICE_NAME }}
+          FASTMARKETS_SERVICE_KEY: ${{ secrets.FASTMARKETS_SERVICE_KEY }}
+          MARKETO_BASE_URL: ${{ secrets.MARKETO_BASE_URL }}
+          MARKETO_CLIENT_ID: ${{ secrets.MARKETO_CLIENT_ID }}
+          MARKETO_CLIENT_SECRET: ${{ secrets.MARKETO_CLIENT_SECRET }}
+          MARKETO_EMAIL_ID: ${{ secrets.MARKETO_EMAIL_ID_SYP }}
+          MARKETO_SC_ID: ${{ secrets.MARKETO_SC_ID_SYP }}
+        run: python syparticle.py

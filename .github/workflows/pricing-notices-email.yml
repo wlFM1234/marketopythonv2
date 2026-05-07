@@ -1,0 +1,35 @@
+name: Pricing Notices - Marketo Token Update
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [run-pricing-notices]
+
+jobs:
+  update-token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Run pricing notices script
+        env:
+          FASTMARKETS_SERVICE_NAME: ${{ secrets.FASTMARKETS_SERVICE_NAME }}
+          FASTMARKETS_SERVICE_KEY: ${{ secrets.FASTMARKETS_SERVICE_KEY }}
+          MARKETO_BASE_URL: ${{ secrets.MARKETO_BASE_URL }}
+          MARKETO_CLIENT_ID: ${{ secrets.MARKETO_CLIENT_ID }}
+          MARKETO_CLIENT_SECRET: ${{ secrets.MARKETO_CLIENT_SECRET }}
+          MARKETO_PROGRAM_ID: ${{ secrets.MARKETO_PROGRAM_ID_PRICING_NOTICES }}
+          MARKETO_SC_ID: ${{ secrets.MARKETO_SC_ID_PRICING_NOTICES }}
+          NEWS_LOOKBACK_DAYS: 2
+        run: python pricingnotices.py

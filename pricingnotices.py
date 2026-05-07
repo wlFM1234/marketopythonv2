@@ -400,7 +400,7 @@ def render_vertical_html(vertical_name: str, articles: list[dict]) -> str:
     heading = (
         f'<p style="margin:0 0 12px 0;">'
         f'<span style="font-size:18px; font-weight:bold; text-decoration:underline;">'
-        f'Pricing Notices — {vertical_name}'
+        f'Pricing Notices &#8212; {vertical_name}'
         f'</span></p>'
     )
 

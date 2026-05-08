@@ -40,7 +40,6 @@ APPROVE_ON_SAVE       = os.getenv("APPROVE_ON_SAVE", "1").strip() == "1"
 NEWS_LOOKBACK_DAYS    = int(os.getenv("NEWS_LOOKBACK_DAYS", "2"))
 SCHEDULE_HOUR_UK      = int(os.getenv("SCHEDULE_HOUR_UK", "12"))
 MARKETO_PROGRAM_ID    = int(os.getenv("MARKETO_PROGRAM_ID", "0"))
-MARKETO_SC_ID         = int(os.getenv("MARKETO_SC_ID", "0"))
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 FM_AUTH_URL        = "https://auth.fastmarkets.com/connect/token"
@@ -61,6 +60,7 @@ VERTICAL_DEFS: list[dict] = [
     {
         "name": "Carbon",
         "token_name": "CarbonNotices",
+        "sc_id": 20919,
         "include": [
             "carbon credit", "carbon offset", "carbon allowance", "carbon market",
             "carbon permit", "carbon removal", "carbon sequestration",
@@ -85,6 +85,7 @@ VERTICAL_DEFS: list[dict] = [
     {
         "name": "Forest Products",
         "token_name": "ForestNotices",
+        "sc_id": 20918,
         "include": [
             "pulp", "paper", "kraft", "newsprint", "containerboard",
             "linerboard", "testliner", "fluting", "liner board",
@@ -106,6 +107,7 @@ VERTICAL_DEFS: list[dict] = [
     {
         "name": "Agriculture",
         "token_name": "AgsNotices",
+        "sc_id": 20917,
         "include": [
             "soy", "soya", "palm", "sunflower", "rapeseed", "canola",
             "vegetable oil", "crude palm oil", "cpo ", "rbd", "olein",
@@ -138,6 +140,7 @@ VERTICAL_DEFS: list[dict] = [
     {
         "name": "Metals",
         "token_name": "MetalsNotices",
+        "sc_id": 20577,
         # Empty include = catch-all: anything not claimed by a higher-priority vertical lands here.
         "include": [],
         "exclude": [],
@@ -567,15 +570,15 @@ def run():
     for v in VERTICAL_DEFS:
         vname      = v["name"]
         token_name = v["token_name"]
+        sc_id      = v["sc_id"]
         varts      = assignments[vname]
         html       = render_vertical_html(vname, varts)
         print(f"--- Updating {{{{my.{token_name}}}}} ({len(varts)} article(s)) ---")
         update_program_token(mkto_token, MARKETO_PROGRAM_ID, token_name, html)
         print("  Token updated.")
-
-    if MARKETO_SC_ID:
-        print(f"--- Scheduling smart campaign {MARKETO_SC_ID} ---")
-        schedule_smart_campaign_in(mkto_token, MARKETO_SC_ID, delay_minutes=10)
+        if varts and sc_id:
+            schedule_smart_campaign_in(mkto_token, sc_id, delay_minutes=10)
+            print(f"  Campaign {sc_id} scheduled.")
 
     print("Done.")
 

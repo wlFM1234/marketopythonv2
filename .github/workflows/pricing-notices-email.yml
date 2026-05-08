@@ -30,6 +30,5 @@ jobs:
           MARKETO_CLIENT_ID: ${{ secrets.MARKETO_CLIENT_ID }}
           MARKETO_CLIENT_SECRET: ${{ secrets.MARKETO_CLIENT_SECRET }}
           MARKETO_PROGRAM_ID: ${{ secrets.MARKETO_PROGRAM_ID_PRICING_NOTICES }}
-          MARKETO_SC_ID: ${{ secrets.MARKETO_SC_ID_PRICING_NOTICES }}
           NEWS_LOOKBACK_DAYS: 2
         run: python pricingnotices.py

@@ -99,33 +99,23 @@ def get_active_events(cvent_token):
 
 def get_abandoned_attendees(cvent_token, event_id):
     headers = {"Authorization": f"Bearer {cvent_token}"}
-    attendees = []
-    next_token = None
 
-    while True:
-        # "Visited" = started registration but didn't complete
-        # lastModified filters to last 24 hours only
-        params = {
-            "filter": f"event.id eq '{event_id}' and status eq 'Visited' and lastModified gt '{SINCE}'",
-            "limit": 100,
-        }
-        if next_token:
-            params["token"] = next_token
+    params = {
+        "filter": f"event.id eq '{event_id}'",
+        "limit": 5,
+    }
 
-        resp = requests.get(
-            f"{CVENT_BASE_URL}/attendees",
-            headers=headers,
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        attendees.extend(data.get("data", []))
-
-        next_token = data.get("paging", {}).get("nextToken")
-        if not next_token:
-            break
-
-    return attendees
+    resp = requests.get(
+        f"{CVENT_BASE_URL}/attendees",
+        headers=headers,
+        params=params,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    for a in data.get("data", []):
+        print(f"   Status: {a.get('status')} | Email: {a.get('contact', {}).get('email')}")
+    
+    sys.exit(0)
 
 
 # ── Marketo auth ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 """
 cventabandoned.py
 -----------------
-Pulls "abandoned" registrants (status = Visited) from all active Cvent events
+Pulls abandoned registrants (status = Visited) from all upcoming Cvent events
 in the last 24 hours, then for each person:
   - If email exists in Marketo → updates freefielduniqueurl + adds to static list
   - If email doesn't exist    → creates new lead + adds to static list
@@ -36,7 +36,6 @@ MARKETO_CLIENT_ID     = os.environ["MARKETO_CLIENT_ID"]
 MARKETO_CLIENT_SECRET = os.environ["MARKETO_CLIENT_SECRET"]
 MARKETO_LIST_ID       = os.environ["MARKETO_ABANDONED_REG_LIST_ID"]
 
-# Only pull records modified in the last 24 hours
 SINCE = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -46,7 +45,6 @@ def get_cvent_token():
     credentials = base64.b64encode(
         f"{CVENT_CLIENT_ID}:{CVENT_CLIENT_SECRET}".encode()
     ).decode()
-
     resp = requests.post(
         f"{CVENT_BASE_URL}/oauth2/token",
         headers={
@@ -66,7 +64,7 @@ def get_cvent_token():
     return token
 
 
-# ── Cvent: get all active events ──────────────────────────────────────────────
+# ── Cvent: get all upcoming events ────────────────────────────────────────────
 
 def get_active_events(cvent_token):
     headers = {"Authorization": f"Bearer {cvent_token}"}
@@ -91,7 +89,7 @@ def get_active_events(cvent_token):
         if not next_token:
             break
 
-    print(f"📅 Found {len(events)} active Cvent event(s)")
+    print(f"📅 Found {len(events)} upcoming Cvent event(s)")
     return events
 
 
@@ -110,11 +108,8 @@ def get_abandoned_attendees(cvent_token, event_id):
         headers=headers,
         params=params,
     )
-    resp.raise_for_status()
-    data = resp.json()
-    for a in data.get("data", []):
-        print(f"   Status: {a.get('status')} | Email: {a.get('contact', {}).get('email')}")
-    
+    print(f"   Status code: {resp.status_code}")
+    print(f"   Response: {resp.text[:500]}")
     sys.exit(0)
 
 
@@ -189,7 +184,7 @@ def main():
 
     events = get_active_events(cvent_token)
     if not events:
-        print("No active events found — exiting.")
+        print("No upcoming events found — exiting.")
         sys.exit(0)
 
     total_upserted = 0
@@ -197,14 +192,15 @@ def main():
     total_skipped  = 0
 
     for event in events:
-    event_id    = event.get("id")
-    event_title = event.get("title", event_id)
-    
-    # Temporary: only test on this event
-    if event_title != "Global Lithium, Battery and Critical Materials 2026":
-        continue
-        
-    print(f"\n📌 Event: {event_title} ({event_id})")
+        event_id    = event.get("id")
+        event_title = event.get("title", event_id)
+
+        # Temporary: only test on this event
+        if event_title != "Global Lithium, Battery and Critical Materials 2026":
+            continue
+
+        print(f"\n📌 Event: {event_title} ({event_id})")
+
         abandoned = get_abandoned_attendees(cvent_token, event_id)
         if not abandoned:
             print("   No abandoned registrants in last 24hrs.")
@@ -213,7 +209,6 @@ def main():
         print(f"   Found {len(abandoned)} abandoned registrant(s)")
 
         for person in abandoned:
-            # Contact details are nested under contact{}
             contact    = person.get("contact", {})
             email      = (contact.get("email") or "").strip().lower()
             first_name = contact.get("firstName", "")

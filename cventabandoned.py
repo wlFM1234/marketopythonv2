@@ -74,7 +74,7 @@ def get_active_events(cvent_token):
     next_token = None
 
     while True:
-        params = {"filter": "status eq 'Active'", "limit": 50}
+        params = {"filter": "eventStatus eq 'Upcoming'", "limit": 50}
         if next_token:
             params["token"] = next_token
 

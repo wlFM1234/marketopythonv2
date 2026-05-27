@@ -99,7 +99,7 @@ def get_abandoned_attendees(cvent_token, event_id):
     headers = {"Authorization": f"Bearer {cvent_token}"}
 
     params = {
-        "filter": f"event.id eq '{event_id}'",
+        "filter": f"event.id eq '{event_id}' and status eq 'Visited'",
         "limit": 10,
     }
 
@@ -109,6 +109,7 @@ def get_abandoned_attendees(cvent_token, event_id):
         params=params,
     )
     data = resp.json()
+    print(f"   Total Visited: {data.get('paging', {}).get('totalCount', 0)}")
     for a in data.get("data", []):
         print(f"   Status: {a.get('status')} | Email: {a.get('contact', {}).get('email')}")
     sys.exit(0)

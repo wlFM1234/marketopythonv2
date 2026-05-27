@@ -25,7 +25,7 @@ from datetime import datetime, timezone, timedelta
 
 CVENT_CLIENT_ID       = os.environ["CVENT_CLIENT_ID"]
 CVENT_CLIENT_SECRET   = os.environ["CVENT_CLIENT_SECRET"]
-CVENT_BASE_URL        = "https://api-platform.cvent.com/ea"
+CVENT_BASE_URL        = "https://api-platform-eur.cvent.com/ea"
 
 MARKETO_BASE_URL      = os.environ["MARKETO_BASE_URL"].rstrip("/")
 MARKETO_CLIENT_ID     = os.environ["MARKETO_CLIENT_ID"]

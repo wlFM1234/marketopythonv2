@@ -21,10 +21,9 @@ jobs:
 
       - name: Run Cvent abandoned reg sync
         env:
-          CVENT_CLIENT_ID:               ${{ secrets.CVENT_CLIENT_ID }}
-          CVENT_CLIENT_SECRET:           ${{ secrets.CVENT_CLIENT_SECRET }}
           MARKETO_BASE_URL:              ${{ secrets.MARKETO_BASE_URL }}
           MARKETO_CLIENT_ID:             ${{ secrets.MARKETO_CLIENT_ID }}
           MARKETO_CLIENT_SECRET:         ${{ secrets.MARKETO_CLIENT_SECRET }}
           MARKETO_ABANDONED_REG_LIST_ID: ${{ secrets.MARKETO_ABANDONED_REG_LIST_ID }}
+          PAYLOAD:                       ${{ toJson(github.event.client_payload) }}
         run: python cventabandoned.py

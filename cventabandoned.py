@@ -1,118 +1,37 @@
 """
 cventabandoned.py
 -----------------
-Pulls abandoned registrants (status = Visited) from all upcoming Cvent events
-in the last 24 hours, then for each person:
-  - If email exists in Marketo → updates freefielduniqueurl + adds to static list
-  - If email doesn't exist    → creates new lead + adds to static list
+Triggered by GitHub Actions repository_dispatch from Cloudflare Worker relay.
+Reads abandoned registrant data from the dispatch client_payload sent by Cvent,
+then for each person:
+  - Creates or updates lead in Marketo
+  - Writes event title to freefielduniqueurl
+  - Adds to static list
 
 Required GitHub secrets:
-  CVENT_CLIENT_ID
-  CVENT_CLIENT_SECRET
   MARKETO_BASE_URL
   MARKETO_CLIENT_ID
   MARKETO_CLIENT_SECRET
   MARKETO_ABANDONED_REG_LIST_ID
-
-Required Cvent app scopes:
-  event/events:read
-  event/attendees:read
 """
 
 import os
 import sys
-import base64
+import json
 import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
-
-CVENT_CLIENT_ID       = os.environ["CVENT_CLIENT_ID"]
-CVENT_CLIENT_SECRET   = os.environ["CVENT_CLIENT_SECRET"]
-CVENT_BASE_URL        = "https://api-platform-eur.cvent.com/ea"
 
 MARKETO_BASE_URL      = os.environ["MARKETO_BASE_URL"].rstrip("/")
 MARKETO_CLIENT_ID     = os.environ["MARKETO_CLIENT_ID"]
 MARKETO_CLIENT_SECRET = os.environ["MARKETO_CLIENT_SECRET"]
 MARKETO_LIST_ID       = os.environ["MARKETO_ABANDONED_REG_LIST_ID"]
 
-SINCE = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+# GitHub Actions passes client_payload as a JSON string in the PAYLOAD env var
+# (set in the workflow yml via ${{ toJson(github.event.client_payload) }})
+PAYLOAD = json.loads(os.environ["PAYLOAD"])
 
-
-# ── Cvent auth ────────────────────────────────────────────────────────────────
-
-def get_cvent_token():
-    credentials = base64.b64encode(
-        f"{CVENT_CLIENT_ID}:{CVENT_CLIENT_SECRET}".encode()
-    ).decode()
-    resp = requests.post(
-        f"{CVENT_BASE_URL}/oauth2/token",
-        headers={
-            "Authorization": f"Basic {credentials}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={
-            "grant_type": "client_credentials",
-            "client_id": CVENT_CLIENT_ID,
-        },
-    )
-    resp.raise_for_status()
-    token = resp.json().get("access_token")
-    if not token:
-        raise ValueError(f"No access_token in Cvent auth response: {resp.json()}")
-    print("✅ Cvent auth OK")
-    return token
-
-
-# ── Cvent: get all upcoming events ────────────────────────────────────────────
-
-def get_active_events(cvent_token):
-    headers = {"Authorization": f"Bearer {cvent_token}"}
-    events = []
-    next_token = None
-
-    while True:
-        params = {"filter": "eventStatus eq 'Upcoming'", "limit": 50}
-        if next_token:
-            params["token"] = next_token
-
-        resp = requests.get(
-            f"{CVENT_BASE_URL}/events",
-            headers=headers,
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        events.extend(data.get("data", []))
-
-        next_token = data.get("paging", {}).get("nextToken")
-        if not next_token:
-            break
-
-    print(f"📅 Found {len(events)} upcoming Cvent event(s)")
-    return events
-
-
-# ── Cvent: get abandoned (Visited) attendees for one event in last 24hrs ──────
-
-def get_abandoned_attendees(cvent_token, event_id):
-    headers = {"Authorization": f"Bearer {cvent_token}"}
-
-    params = {
-        "filter": f"event.id eq '{event_id}' and status eq 'Visited'",
-        "limit": 10,
-    }
-
-    resp = requests.get(
-        f"{CVENT_BASE_URL}/attendees",
-        headers=headers,
-        params=params,
-    )
-    data = resp.json()
-    print(f"   Total Visited: {data.get('paging', {}).get('totalCount', 0)}")
-    for a in data.get("data", []):
-        print(f"   Status: {a.get('status')} | Email: {a.get('contact', {}).get('email')}")
-    sys.exit(0)
 
 # ── Marketo auth ──────────────────────────────────────────────────────────────
 
@@ -177,59 +96,45 @@ def add_to_marketo_list(marketo_token, list_id, lead_ids):
 def main():
     print(f"\n{'='*60}")
     print(f"Cvent Abandoned Reg Sync — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"Pulling records modified since: {SINCE}")
     print(f"{'='*60}\n")
 
-    cvent_token   = get_cvent_token()
-    marketo_token = get_marketo_token()
+    event_type = PAYLOAD.get("eventType", "unknown")
+    invitees   = PAYLOAD.get("message", [])
 
-    events = get_active_events(cvent_token)
-    if not events:
-        print("No upcoming events found — exiting.")
+    print(f"Event type: {event_type}")
+    print(f"Invitees in payload: {len(invitees)}")
+
+    if not invitees:
+        print("No invitees in payload — exiting.")
         sys.exit(0)
+
+    marketo_token = get_marketo_token()
 
     total_upserted = 0
     total_listed   = 0
     total_skipped  = 0
 
-    for event in events:
-        event_id    = event.get("id")
-        event_title = event.get("title", event_id)
+    for person in invitees:
+        email      = (person.get("email") or "").strip().lower()
+        first_name = person.get("firstName", "")
+        last_name  = person.get("lastName", "")
+        event_title = person.get("eventForInvitee", {}).get("eventTitle", "")
 
-        # Temporary: only test on this event
-        if event_title != "Global Lithium, Battery and Critical Materials 2026":
+        if not email:
+            print(f"   ⚠️  Skipping record with no email")
+            total_skipped += 1
             continue
 
-        print(f"\n📌 Event: {event_title} ({event_id})")
+        print(f"   → Processing {email} (event: {event_title})")
 
-        abandoned = get_abandoned_attendees(cvent_token, event_id)
-        if not abandoned:
-            print("   No abandoned registrants in last 24hrs.")
-            continue
+        lead_id = upsert_marketo_lead(
+            marketo_token, email, first_name, last_name, event_title
+        )
 
-        print(f"   Found {len(abandoned)} abandoned registrant(s)")
-
-        for person in abandoned:
-            contact    = person.get("contact", {})
-            email      = (contact.get("email") or "").strip().lower()
-            first_name = contact.get("firstName", "")
-            last_name  = contact.get("lastName", "")
-
-            if not email:
-                print(f"   ⚠️  Skipping record with no email")
-                total_skipped += 1
-                continue
-
-            print(f"   → Processing {email}")
-
-            lead_id = upsert_marketo_lead(
-                marketo_token, email, first_name, last_name, event_title
-            )
-
-            if lead_id:
-                add_to_marketo_list(marketo_token, MARKETO_LIST_ID, [lead_id])
-                total_upserted += 1
-                total_listed   += 1
+        if lead_id:
+            add_to_marketo_list(marketo_token, MARKETO_LIST_ID, [lead_id])
+            total_upserted += 1
+            total_listed   += 1
 
     print(f"\n{'='*60}")
     print(f"✅ Done — Upserted: {total_upserted} | Added to list: {total_listed} | Skipped: {total_skipped}")

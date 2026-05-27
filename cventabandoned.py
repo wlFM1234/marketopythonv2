@@ -100,7 +100,7 @@ def get_abandoned_attendees(cvent_token, event_id):
 
     params = {
         "filter": f"event.id eq '{event_id}'",
-        "limit": 5,
+        "limit": 10,
     }
 
     resp = requests.get(
@@ -108,10 +108,10 @@ def get_abandoned_attendees(cvent_token, event_id):
         headers=headers,
         params=params,
     )
-    print(f"   Status code: {resp.status_code}")
-    print(f"   Response: {resp.text[:500]}")
+    data = resp.json()
+    for a in data.get("data", []):
+        print(f"   Status: {a.get('status')} | Email: {a.get('contact', {}).get('email')}")
     sys.exit(0)
-
 
 # ── Marketo auth ──────────────────────────────────────────────────────────────
 

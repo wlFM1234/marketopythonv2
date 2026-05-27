@@ -197,10 +197,14 @@ def main():
     total_skipped  = 0
 
     for event in events:
-        event_id    = event.get("id")
-        event_title = event.get("title", event_id)
-        print(f"\n📌 Event: {event_title} ({event_id})")
-
+    event_id    = event.get("id")
+    event_title = event.get("title", event_id)
+    
+    # Temporary: only test on this event
+    if event_title != "Global Lithium, Battery and Critical Materials 2026":
+        continue
+        
+    print(f"\n📌 Event: {event_title} ({event_id})")
         abandoned = get_abandoned_attendees(cvent_token, event_id)
         if not abandoned:
             print("   No abandoned registrants in last 24hrs.")

@@ -67,29 +67,12 @@ def get_cvent_token():
 
 def get_active_events(cvent_token):
     headers = {"Authorization": f"Bearer {cvent_token}"}
-    events = []
-    next_token = None
-
-    while True:
-        params = {"filter": "status eq 'Active'", "limit": 50}
-        if next_token:
-            params["token"] = next_token
-
-        resp = requests.get(
-            f"{CVENT_BASE_URL}/event-management/v1/events",
-            headers=headers,
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        events.extend(data.get("data", []))
-
-        next_token = data.get("paging", {}).get("nextToken")
-        if not next_token:
-            break
-
-    print(f"📅 Found {len(events)} active Cvent event(s)")
-    return events
+    
+    test_url = f"{CVENT_BASE_URL}/event-management/v1/events"
+    resp = requests.get(test_url, headers=headers, params={"limit": 1})
+    print(f"Events endpoint status: {resp.status_code}")
+    print(f"Response: {resp.text[:500]}")
+    sys.exit(0)
 
 
 # ── Cvent: get abandoned registrants from last 24hrs for one event ────────────

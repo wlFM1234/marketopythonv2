@@ -4,6 +4,7 @@ import time
 import datetime as dt
 import requests
 from dotenv import load_dotenv
+from marketo_auth import marketo_request
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -136,49 +137,24 @@ def check_all_prices_are_today(fm_token: str, rows: list) -> bool:
 # =========================================
 # Marketo helpers
 # =========================================
-def marketo_get_token():
-    url = f"{MARKETO_BASE_URL}/identity/oauth/token"
-    params = {"grant_type": "client_credentials", "client_id": MARKETO_CLIENT_ID, "client_secret": MARKETO_CLIENT_SECRET}
-    res = requests.get(url, params=params, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    tok = j.get("access_token")
-    if not tok:
-        raise RuntimeError(f"Marketo auth failed: {j}")
-    return tok
-
-def inject_cell(token: str, email_id: int, html_id: str, value: str):
+def inject_cell(email_id: int, html_id: str, value: str):
     url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/content/{html_id}.json"
-    headers = {"Authorization": f"Bearer {token}", "X-HTTP-Method-Override": "PUT"}
-    payload = {"type": "Text", "value": value}
-    res = requests.post(url, headers=headers, data=payload, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Failed to update {html_id}: {j}")
-    return j
+    return marketo_request(
+        "POST", url,
+        headers={"X-HTTP-Method-Override": "PUT"},
+        data={"type": "Text", "value": value},
+        timeout=30,
+    )
 
-def approve_draft(token: str, email_id: int):
+def approve_draft(email_id: int):
     time.sleep(2)
     url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/approveDraft.json"
-    headers = {"Authorization": f"Bearer {token}"}
-    res = requests.post(url, headers=headers, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Approval failed: {j}")
-    return j
+    return marketo_request("POST", url, timeout=30)
 
-def schedule_campaign(token: str, campaign_id: int, run_at: dt.datetime):
+def schedule_campaign(campaign_id: int, run_at: dt.datetime):
     url = f"{MARKETO_BASE_URL}/rest/v1/campaigns/{campaign_id}/schedule.json"
-    headers = {"Authorization": f"Bearer {token}"}
     run_at_str = run_at.strftime("%Y-%m-%dT%H:%M:%S+0000")
-    payload = {"input": {"runAt": run_at_str}}
-    res = requests.post(url, headers=headers, json=payload, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Campaign scheduling failed: {j}")
+    j = marketo_request("POST", url, json={"input": {"runAt": run_at_str}}, timeout=30)
     print(f"📅 Campaign {campaign_id} scheduled for {run_at_str}")
     return j
 
@@ -206,9 +182,6 @@ def run():
                 raise RuntimeError(f"Prices still not today after {MAX_RETRIES} attempts. Aborting.")
             print(f"✗ Not all prices are today. Waiting 1 hour before retry...")
             time.sleep(60 * 60)
-
-    print("\n--- Marketo: Authenticate ---")
-    mkto_token = marketo_get_token()
 
     for item in rows:
         r  = item["row"]
@@ -258,15 +231,15 @@ def run():
 
         for html_id, value in mapping.items():
             print(f"  -> {html_id} = {value}")
-            inject_cell(mkto_token, TARGET_EMAIL_ID, html_id, value)
+            inject_cell(TARGET_EMAIL_ID, html_id, value)
 
     print("--- Approving draft ---")
-    approve_draft(mkto_token, TARGET_EMAIL_ID)
+    approve_draft(TARGET_EMAIL_ID)
     print("✅ Email approved and LIVE.")
 
     print("--- Scheduling smart campaign ---")
-    run_at = dt.datetime.utcnow() + dt.timedelta(minutes=30)
-    schedule_campaign(mkto_token, SMART_CAMPAIGN_ID, run_at)
+    run_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=30)
+    schedule_campaign(SMART_CAMPAIGN_ID, run_at)
     print("✅ All done.")
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import urllib3
 import threading
+from marketo_auth import get_valid_mkto_token, invalidate_mkto_token, marketo_request
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -282,17 +283,6 @@ def fm_get_latest_rationale(token: str, symbol: str, lookback_days: int = 365) -
 _mkto_last_call = 0.0
 _mkto_lock = threading.Lock()
 
-def marketo_get_token():
-    url = f"{MARKETO_BASE_URL}/identity/oauth/token"
-    params = {"grant_type": "client_credentials", "client_id": MARKETO_CLIENT_ID, "client_secret": MARKETO_CLIENT_SECRET}
-    res = requests.get(url, params=params, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    tok = j.get("access_token")
-    if not tok:
-        raise RuntimeError(f"Marketo auth failed: {j}")
-    return tok
-
 def _mkto_throttle():
     global _mkto_last_call
     with _mkto_lock:
@@ -302,46 +292,40 @@ def _mkto_throttle():
             time.sleep(wait)
         _mkto_last_call = time.time()
 
-def inject_text(token: str, email_id: int, html_id: str, value: str):
+def inject_text(email_id: int, html_id: str, value: str):
     _mkto_throttle()
     session = requests.Session()
     adapter = HTTPAdapter(max_retries=Retry(total=4, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504]))
     session.mount("https://", adapter)
     url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/content/{html_id}.json"
-    headers = {"Authorization": f"Bearer {token}", "X-HTTP-Method-Override": "PUT"}
     payload = {"type": "Text", "value": normalize_smart_punctuation(value)}
-    res = session.post(url, headers=headers, data=payload, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    if not j.get("success"):
+    for attempt in range(2):
+        headers = {"Authorization": f"Bearer {get_valid_mkto_token()}", "X-HTTP-Method-Override": "PUT"}
+        res = session.post(url, headers=headers, data=payload, timeout=30)
+        res.raise_for_status()
+        j = res.json()
+        if j.get("success"):
+            return j
+        codes = {str(e.get("code")) for e in (j.get("errors") or [])}
+        if codes & {"601", "602"} and attempt == 0:
+            invalidate_mkto_token()
+            continue
         raise RuntimeError(f"Failed to update {html_id} on email {email_id}: {j}")
-    return j
+    raise RuntimeError(f"Failed to update {html_id} after token refresh")
 
-def approve_draft(token: str, email_id: int):
+def approve_draft(email_id: int):
     time.sleep(2)
     url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/approveDraft.json"
-    headers = {"Authorization": f"Bearer {token}"}
-    res = requests.post(url, headers=headers, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Approval failed for email {email_id}: {j}")
-    return j
+    return marketo_request("POST", url, timeout=30)
 
-def schedule_campaign(token: str, campaign_id: int, run_at: dt.datetime):
+def schedule_campaign(campaign_id: int, run_at: dt.datetime):
     url = f"{MARKETO_BASE_URL}/rest/v1/campaigns/{campaign_id}/schedule.json"
-    headers = {"Authorization": f"Bearer {token}"}
     run_at_str = run_at.strftime("%Y-%m-%dT%H:%M:%S+0000")
-    payload = {"input": {"runAt": run_at_str}}
-    res = requests.post(url, headers=headers, json=payload, timeout=30)
-    res.raise_for_status()
-    j = res.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Campaign scheduling failed for {campaign_id}: {j}")
+    j = marketo_request("POST", url, json={"input": {"runAt": run_at_str}}, timeout=30)
     print(f"📅 Campaign {campaign_id} scheduled for {run_at_str}")
     return j
 
-def marketo_get_email_content_ids(token: str, email_id: int) -> list:
+def marketo_get_email_content_ids(email_id: int) -> list:
     session = requests.Session()
     adapter = HTTPAdapter(max_retries=Retry(total=4, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504]))
     session.mount("https://", adapter)
@@ -349,7 +333,7 @@ def marketo_get_email_content_ids(token: str, email_id: int) -> list:
         for attempts in range(1, 6):
             try:
                 url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/content.json"
-                headers = {"Authorization": f"Bearer {token}"}
+                headers = {"Authorization": f"Bearer {get_valid_mkto_token()}"}
                 params = {"status": status}
                 res = session.get(url, headers=headers, params=params, timeout=30)
                 res.raise_for_status()
@@ -426,9 +410,6 @@ def run():
             time.sleep(60 * 60)
     # ─────────────────────────────────────────────────────────────────────────
 
-    print("--- Marketo: Authenticate ---")
-    mkto_tok = marketo_get_token()
-
     # ---------- Precompute table data ----------
     table_data = {}
     for item in rows:
@@ -490,7 +471,7 @@ def run():
     # ---------- Publish to each email ----------
     for email_id in TARGET_EMAIL_IDS:
         print(f"--- Updating Marketo Email {email_id} ---")
-        avail_ids = marketo_get_email_content_ids(mkto_tok, email_id)
+        avail_ids = marketo_get_email_content_ids(email_id)
 
         id1 = resolve_content_id(TTM_ID_1, avail_ids)
         id2 = resolve_content_id(TTM_ID_2, avail_ids)
@@ -501,32 +482,32 @@ def run():
 
         for r in sorted(table_data.keys()):
             rowv = table_data[r]
-            inject_text(mkto_tok, email_id, f"r{r}_c1", rowv["symbol"])
-            inject_text(mkto_tok, email_id, f"r{r}_c2", rowv["pub"])
-            inject_text(mkto_tok, email_id, f"r{r}_c3", rowv["freq"])
-            inject_text(mkto_tok, email_id, f"r{r}_c4", rowv["cur_mid"])
-            inject_text(mkto_tok, email_id, f"r{r}_c5", rowv["rng"])
-            inject_text(mkto_tok, email_id, f"r{r}_c6", rowv["pre_mid"])
-            inject_text(mkto_tok, email_id, f"r{r}_c7", rowv["delta"])
-            inject_text(mkto_tok, email_id, f"r{r}_c8", rowv["mtd"])
+            inject_text(email_id,f"r{r}_c1", rowv["symbol"])
+            inject_text(email_id,f"r{r}_c2", rowv["pub"])
+            inject_text(email_id,f"r{r}_c3", rowv["freq"])
+            inject_text(email_id,f"r{r}_c4", rowv["cur_mid"])
+            inject_text(email_id,f"r{r}_c5", rowv["rng"])
+            inject_text(email_id,f"r{r}_c6", rowv["pre_mid"])
+            inject_text(email_id,f"r{r}_c7", rowv["delta"])
+            inject_text(email_id,f"r{r}_c8", rowv["mtd"])
 
         for target_id, safe in zip((id1, id2, id3), rat_vals):
-            inject_text(mkto_tok, email_id, target_id, safe or "-")
+            inject_text(email_id,target_id, safe or "-")
 
         for idx, t in enumerate(tile_data, start=1):
-            inject_text(mkto_tok, email_id, f"tile{idx}_code", t["code"])
-            inject_text(mkto_tok, email_id, f"tile{idx}_metrics", t["metrics"])
-            inject_text(mkto_tok, email_id, f"tile{idx}_pub", t["pub"])
+            inject_text(email_id,f"tile{idx}_code", t["code"])
+            inject_text(email_id,f"tile{idx}_metrics", t["metrics"])
+            inject_text(email_id,f"tile{idx}_pub", t["pub"])
 
         print(f"--- Approving draft for Email {email_id} ---")
-        approve_draft(mkto_tok, email_id)
+        approve_draft(email_id)
         print(f"✅ Email {email_id} approved and live.")
 
     # ---------- Schedule smart campaigns ----------
     print("--- Scheduling smart campaigns ---")
     run_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=30)
     for campaign_id in SMART_CAMPAIGN_IDS:
-        schedule_campaign(mkto_tok, campaign_id, run_at)
+        schedule_campaign(campaign_id, run_at)
 
     print("✅ All done.")
 

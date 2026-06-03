@@ -25,6 +25,7 @@ import requests
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from typing import Optional
+from marketo_auth import marketo_request, get_valid_mkto_token
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -416,69 +417,40 @@ def render_vertical_html(_vertical_name: str, articles: list[dict]) -> str:
 # Marketo helpers
 # ═════════════════════════════════════════════════════════════════════════════
 
-def marketo_get_token() -> str:
-    url = f"{MARKETO_BASE_URL}/identity/oauth/token"
-    params = {
-        "grant_type":    "client_credentials",
-        "client_id":     MARKETO_CLIENT_ID,
-        "client_secret": MARKETO_CLIENT_SECRET,
-    }
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    tok = r.json().get("access_token")
-    if not tok:
-        raise RuntimeError(f"Marketo auth failed: {r.text}")
-    return tok
-
-
-def update_program_token(mkto_token: str, program_id: int, token_name: str, value: str):
+def update_program_token(program_id: int, token_name: str, value: str):
     """Delete then recreate a My Token on a program (plain POST upsert silently no-ops)."""
-    headers = {"Authorization": f"Bearer {mkto_token}"}
-    base    = f"{MARKETO_BASE_URL}/rest/asset/v1/folder/{program_id}/tokens"
+    base = f"{MARKETO_BASE_URL}/rest/asset/v1/folder/{program_id}/tokens"
+    # Best-effort delete — failures are intentionally ignored
     requests.post(
-        f"{base}/delete.json", headers=headers,
+        f"{base}/delete.json",
+        headers={"Authorization": f"Bearer {get_valid_mkto_token()}"},
         data={"name": token_name, "type": "rich text", "folderType": "Program"},
         timeout=30,
     )
-    r = requests.post(
-        f"{base}.json", headers=headers,
+    return marketo_request(
+        "POST", f"{base}.json",
         data={"name": token_name, "value": value, "type": "rich text", "folderType": "Program"},
         timeout=30,
     )
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Token update failed for program {program_id} / {token_name}: {j}")
-    return j
 
 
-def inject_cell(mkto_token: str, email_id: int, html_id: str, value: str):
+def inject_cell(email_id: int, html_id: str, value: str):
     url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/content/{html_id}.json"
-    headers = {
-        "Authorization":       f"Bearer {mkto_token}",
-        "X-HTTP-Method-Override": "PUT",
-    }
-    r = requests.post(url, headers=headers, data={"type": "Text", "value": value}, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Failed to update {html_id} on email {email_id}: {j}")
-    return j
+    return marketo_request(
+        "POST", url,
+        headers={"X-HTTP-Method-Override": "PUT"},
+        data={"type": "Text", "value": value},
+        timeout=30,
+    )
 
 
-def approve_draft(mkto_token: str, email_id: int):
+def approve_draft(email_id: int):
     time.sleep(2)
     url = f"{MARKETO_BASE_URL}/rest/asset/v1/email/{email_id}/approveDraft.json"
-    headers = {"Authorization": f"Bearer {mkto_token}"}
-    r = requests.post(url, headers=headers, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Approval failed for email {email_id}: {j}")
-    return j
+    return marketo_request("POST", url, timeout=30)
 
 
-def schedule_smart_campaign_in(mkto_token: str, sc_id: int, delay_minutes: int = 10):
+def schedule_smart_campaign_in(sc_id: int, delay_minutes: int = 10):
     """Schedule a smart campaign to run delay_minutes from now."""
     if not sc_id:
         return
@@ -486,17 +458,11 @@ def schedule_smart_campaign_in(mkto_token: str, sc_id: int, delay_minutes: int =
         dt.datetime.now(tz=dt.timezone.utc) + dt.timedelta(minutes=delay_minutes)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
     url = f"{MARKETO_BASE_URL}/rest/v1/campaigns/{sc_id}/schedule.json"
-    headers = {"Authorization": f"Bearer {mkto_token}", "Content-Type": "application/json"}
-    r = requests.post(url, headers=headers, json={"input": {"runAt": run_at}}, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Campaign scheduling failed for {sc_id}: {j}")
+    marketo_request("POST", url, json={"input": {"runAt": run_at}}, timeout=30)
     print(f"  Campaign {sc_id} scheduled for {run_at} UTC (+{delay_minutes} min)")
-    return j
 
 
-def schedule_smart_campaign(mkto_token: str, sc_id: int):
+def schedule_smart_campaign(sc_id: int):
     """Schedule campaign for SCHEDULE_HOUR_UK:00 UK time today (must be ≥5 min away)."""
     if not sc_id:
         print("   sc_id=0, skipping campaign schedule.")
@@ -514,14 +480,8 @@ def schedule_smart_campaign(mkto_token: str, sc_id: int):
 
     run_at = run_uk.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     url = f"{MARKETO_BASE_URL}/rest/v1/campaigns/{sc_id}/schedule.json"
-    headers = {"Authorization": f"Bearer {mkto_token}", "Content-Type": "application/json"}
-    r = requests.post(url, headers=headers, json={"input": {"runAt": run_at}}, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Campaign scheduling failed for {sc_id}: {j}")
+    marketo_request("POST", url, json={"input": {"runAt": run_at}}, timeout=30)
     print(f"   Campaign {sc_id} scheduled for {SCHEDULE_HOUR_UK:02d}:00 UK ({run_at} UTC)")
-    return j
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -564,9 +524,6 @@ def run():
         print(f"  {v['name']}: {n} article(s)")
 
     # ── Marketo: update all four tokens ──────────────────────────────────
-    print("--- Marketo: Auth ---")
-    mkto_token = marketo_get_token()
-
     for v in VERTICAL_DEFS:
         vname      = v["name"]
         token_name = v["token_name"]
@@ -574,10 +531,10 @@ def run():
         varts      = assignments[vname]
         html       = render_vertical_html(vname, varts)
         print(f"--- Updating {{{{my.{token_name}}}}} ({len(varts)} article(s)) ---")
-        update_program_token(mkto_token, MARKETO_PROGRAM_ID, token_name, html)
+        update_program_token(MARKETO_PROGRAM_ID, token_name, html)
         print("  Token updated.")
         if varts and sc_id:
-            schedule_smart_campaign_in(mkto_token, sc_id, delay_minutes=10)
+            schedule_smart_campaign_in(sc_id, delay_minutes=10)
             print(f"  Campaign {sc_id} scheduled.")
 
     print("Done.")

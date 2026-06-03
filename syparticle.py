@@ -7,6 +7,7 @@ import datetime as dt
 import requests
 from dotenv import load_dotenv
 from typing import Optional, Dict
+from marketo_auth import marketo_request, get_valid_mkto_token, invalidate_mkto_token
 
 # Load .env from this file's directory
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -179,41 +180,19 @@ def wrap_news_html(article: Dict) -> str:
 
 
 # === Marketo helpers ===
-def marketo_get_token() -> str:
-    params = {
-        "grant_type": "client_credentials",
-        "client_id": MARKETO_CLIENT_ID,
-        "client_secret": MARKETO_CLIENT_SECRET,
-    }
-    r = requests.get(MKTO_IDENTITY_URL, params=params, timeout=30)
-    r.raise_for_status()
-    tok = r.json().get("access_token")
-    if not tok:
-        raise RuntimeError(f"Marketo auth failed: {r.text}")
-    return tok
-
-
-def inject_cell(mkto_token: str, email_id: int, html_id: str, value: str):
+def inject_cell(email_id: int, html_id: str, value: str):
     url = MKTO_UPDATE_CELL_TPL.format(id=email_id, htmlId=html_id)
-    headers = {"Authorization": f"Bearer {mkto_token}", "X-HTTP-Method-Override": "PUT"}
-    payload = {"type": "Text", "value": value}
-    r = requests.post(url, headers=headers, data=payload, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Failed to update {html_id}: {j}")
-    return j
+    return marketo_request(
+        "POST", url,
+        headers={"X-HTTP-Method-Override": "PUT"},
+        data={"type": "Text", "value": value},
+        timeout=30,
+    )
 
 
-def approve_draft(mkto_token: str, email_id: int):
+def approve_draft(email_id: int):
     url = MKTO_APPROVE_TPL.format(id=email_id)
-    headers = {"Authorization": f"Bearer {mkto_token}"}
-    r = requests.post(url, headers=headers, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Approval failed: {j}")
-    return j
+    return marketo_request("POST", url, timeout=30)
 
 
 def load_last_scheduled_run() -> Optional[str]:
@@ -231,7 +210,7 @@ def save_last_scheduled_run(run_at: str):
         f.write(run_at)
 
 
-def cancel_if_scheduled(mkto_token: str, sc_id: int):
+def cancel_if_scheduled(sc_id: int):
     """
     Cancel any previously scheduled run using the runAt we saved locally.
     If there's no saved run, or Marketo says it's already gone (609/610/709),
@@ -244,48 +223,41 @@ def cancel_if_scheduled(mkto_token: str, sc_id: int):
 
     print(f"   Attempting to cancel previously scheduled run at {run_at} ...")
     url = MKTO_CANCEL_SC_TPL.format(id=sc_id)
-    headers = {
-        "Authorization": f"Bearer {mkto_token}",
-        "Content-Type": "application/json",
-    }
     body = {"input": {"runAt": run_at}}
-    r = requests.post(url, headers=headers, json=body, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if j.get("success"):
-        print(f"   Existing scheduled run at {run_at} cancelled.")
-    else:
+    for attempt in range(2):
+        headers = {
+            "Authorization": f"Bearer {get_valid_mkto_token()}",
+            "Content-Type": "application/json",
+        }
+        r = requests.post(url, headers=headers, json=body, timeout=30)
+        r.raise_for_status()
+        j = r.json()
+        if j.get("success"):
+            print(f"   Existing scheduled run at {run_at} cancelled.")
+            return
         codes = [e.get("code") for e in (j.get("errors") or [])]
+        if set(codes) & {"601", "602"} and attempt == 0:
+            invalidate_mkto_token()
+            continue
         if set(codes).issubset({"609", "610", "709"}):
             print(f"   Run at {run_at} was already gone — nothing to cancel.")
-        else:
-            raise RuntimeError(f"Failed to cancel smart campaign {sc_id}: {j}")
-
-
-def cancel_smart_campaign(mkto_token: str, sc_id: int):
-    """
-    Cancel a scheduled smart campaign run.
-    POST /rest/v1/campaigns/{id}/cancel.json
-    """
-    url = MKTO_CANCEL_SC_TPL.format(id=sc_id)
-    headers = {"Authorization": f"Bearer {mkto_token}"}
-    r = requests.post(url, headers=headers, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
+            return
         raise RuntimeError(f"Failed to cancel smart campaign {sc_id}: {j}")
+
+
+def cancel_smart_campaign(sc_id: int):
+    """Cancel a scheduled smart campaign run."""
+    url = MKTO_CANCEL_SC_TPL.format(id=sc_id)
+    j = marketo_request("POST", url, timeout=30)
     print(f"   Smart campaign {sc_id} cancelled successfully.")
     return j
 
 
-def schedule_smart_campaign(mkto_token: str, sc_id: int):
+def schedule_smart_campaign(sc_id: int):
     """
     Schedule a Marketo smart campaign to run at 12:00 UK time today.
-    POST /rest/v1/campaigns/{id}/schedule.json
-    Payload: { "input": { "runAt": "<ISO-8601 UTC>" } }
     UK time is Europe/London (handles GMT/BST automatically).
-    Marketo requires runAt to be at least 5 minutes in the future — we
-    raise clearly if 12:00 UK has already passed for the day.
+    Marketo requires runAt to be at least 5 minutes in the future.
     """
     if not sc_id:
         raise RuntimeError("MARKETO_SC_ID is not set in .env")
@@ -296,29 +268,17 @@ def schedule_smart_campaign(mkto_token: str, sc_id: int):
     now_uk = dt.datetime.now(tz=uk_tz)
     run_at_uk = now_uk.replace(hour=12, minute=0, second=0, microsecond=0)
 
-    # Ensure the scheduled time is at least 5 minutes from now
     if run_at_uk <= now_uk + dt.timedelta(minutes=5):
         raise RuntimeError(
             f"12:00 UK time ({run_at_uk.strftime('%H:%M %Z')}) is too close or has already passed "
             f"(current UK time: {now_uk.strftime('%H:%M %Z')}). Cannot schedule."
         )
 
-    # Convert to UTC for the API
     run_at = run_at_uk.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     url = MKTO_SCHEDULE_SC_TPL.format(id=sc_id)
-    headers = {
-        "Authorization": f"Bearer {mkto_token}",
-        "Content-Type": "application/json",
-    }
-    body = {"input": {"runAt": run_at}}
-    r = requests.post(url, headers=headers, json=body, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    if not j.get("success"):
-        raise RuntimeError(f"Smart campaign scheduling failed: {j}")
+    marketo_request("POST", url, json={"input": {"runAt": run_at}}, timeout=30)
     save_last_scheduled_run(run_at)
     print(f"   Smart campaign {sc_id} scheduled for 12:00 UK ({run_at} UTC)")
-    return j
 
 
 # === Main ===
@@ -362,21 +322,18 @@ def run():
 
     html_to_inject = wrap_news_html(article)
 
-    print("--- Marketo: Auth ---")
-    mkto_token = marketo_get_token()
-
     print(f"-> Injecting into {MKTO_CONTENT_HTML_ID}")
-    inject_cell(mkto_token, MARKETO_EMAIL_ID, MKTO_CONTENT_HTML_ID, html_to_inject)
+    inject_cell(MARKETO_EMAIL_ID, MKTO_CONTENT_HTML_ID, html_to_inject)
 
     if APPROVE_ON_SAVE:
         print("--- Approving draft ---")
-        approve_draft(mkto_token, MARKETO_EMAIL_ID)
+        approve_draft(MARKETO_EMAIL_ID)
 
     print(f"--- Checking/cancelling any existing scheduled run (ID={MARKETO_SC_ID}) ---")
-    cancel_if_scheduled(mkto_token, MARKETO_SC_ID)
+    cancel_if_scheduled(MARKETO_SC_ID)
 
     print(f"--- Scheduling smart campaign (ID={MARKETO_SC_ID}) ---")
-    schedule_smart_campaign(mkto_token, MARKETO_SC_ID)
+    schedule_smart_campaign(MARKETO_SC_ID)
 
     print("✅ Done.")
 

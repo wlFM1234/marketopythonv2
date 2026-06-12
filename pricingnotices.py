@@ -70,9 +70,6 @@ VERTICAL_DEFS: list[dict] = [
             "redd+", "redd +",
             " ifm credit", "ifm offset", " ifm assessment", " ifm price",
             "biochar",
-            "renewable diesel", "hydrotreated vegetable oil", " hvo price",
-            "sustainable aviation fuel", " saf price",
-            "biodiesel", "biofuel price",
             "nature-based solution", "nature-based credit",
         ],
         "exclude": [
@@ -131,6 +128,9 @@ VERTICAL_DEFS: list[dict] = [
             "coconut oil", "palm kernel", "tallow",
             "cooking oil",
             "biostarch", "corn starch",
+            "renewable diesel", "hydrotreated vegetable oil", " hvo price",
+            "sustainable aviation fuel", " saf price",
+            "biodiesel", "biofuel price",
             "agriculture price", "agriculture prices",
         ],
         "exclude": [

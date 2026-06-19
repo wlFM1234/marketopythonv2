@@ -326,11 +326,11 @@ def _ascii_html(text: str) -> str:
 
 
 class _ContentCleaner(_HTMLParser):
-    """Strip all HTML tags from article body except <ul>, <ol>, <li>, <br>.
+    """Strip all HTML tags from article body except structural/formatting tags.
     Non-ASCII characters in text nodes are converted to numeric HTML entities.
     Existing &entities; and &#refs; are passed through unchanged."""
 
-    _KEEP = {"ul", "ol", "li"}
+    _KEEP = {"ul", "ol", "li", "b", "strong", "i", "em", "u", "s", "strike", "sup", "sub", "p"}
     _SKIP = {"script", "style"}
 
     def __init__(self):
@@ -338,18 +338,24 @@ class _ContentCleaner(_HTMLParser):
         self._out: list[str] = []
         self._skip = False
 
-    def handle_starttag(self, tag, _):
+    def handle_starttag(self, tag, attrs):
         if tag in self._SKIP:
             self._skip = True
         elif tag == "br":
             self._out.append("<br>")
+        elif tag == "a":
+            href = dict(attrs).get("href", "")
+            if href:
+                self._out.append(f'<a href="{_ascii_html(href)}">')
+            else:
+                self._out.append("<a>")
         elif tag in self._KEEP:
             self._out.append(f"<{tag}>")
 
     def handle_endtag(self, tag):
         if tag in self._SKIP:
             self._skip = False
-        elif tag in self._KEEP:
+        elif tag in self._KEEP or tag == "a":
             self._out.append(f"</{tag}>")
 
     def handle_data(self, data):
@@ -373,7 +379,7 @@ def _clean_content(html: str) -> str:
 
 
 def render_article_html(article: dict) -> str:
-    """Render a single pricing notice as plain text with bold title."""
+    """Render a single pricing notice preserving inline formatting from the source."""
     title    = _ascii_html(article.get("title") or "Pricing Notice")
     content  = _clean_content(article.get("content") or article.get("summary") or "")
     pub      = article.get("publishedDate") or ""

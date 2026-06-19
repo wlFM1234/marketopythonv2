@@ -1,0 +1,29 @@
+name: Cvent Abandoned Registrations Sync
+
+on:
+  repository_dispatch:
+    types: [run-cvent-abandoned]
+
+jobs:
+  sync-abandoned-regs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Cvent abandoned reg sync
+        env:
+          MARKETO_BASE_URL:              ${{ secrets.MARKETO_BASE_URL }}
+          MARKETO_CLIENT_ID:             ${{ secrets.MARKETO_CLIENT_ID }}
+          MARKETO_CLIENT_SECRET:         ${{ secrets.MARKETO_CLIENT_SECRET }}
+          MARKETO_ABANDONED_REG_LIST_ID: ${{ secrets.MARKETO_ABANDONED_REG_LIST_ID }}
+          PAYLOAD:                       ${{ toJson(github.event.client_payload) }}
+        run: python cventabandoned.py

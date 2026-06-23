@@ -181,7 +181,9 @@ def run():
             if attempt == MAX_RETRIES:
                 raise RuntimeError(f"Prices still not today after {MAX_RETRIES} attempts. Aborting.")
             print(f"✗ Not all prices are today. Waiting 1 hour before retry...")
-            time.sleep(60 * 60)
+            for _ in range(12):  # 12 x 5 mins = 1 hour
+                time.sleep(5 * 60)
+                print("   ... waiting ...")
 
     for item in rows:
         r  = item["row"]

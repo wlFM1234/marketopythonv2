@@ -63,7 +63,8 @@ SMART_CAMPAIGN_IDS = [int(x.strip()) for x in _sc_ids_raw.split(",") if x.strip(
 # Symbols to check for today's date before proceeding
 DATE_CHECK_SYMBOLS = [
     "MB-LI-0033", "MB-LI-0029", "MB-LI-0040",
-    "MB-LI-0036", "MB-LI-0012", "MB-CO-0020"
+    "MB-LI-0036", "MB-LI-0012", "MB-CO-0020",
+    "MB-LI-0052"
 ]
 
 # =========================================
@@ -390,6 +391,7 @@ def run():
         {"row": 7, "symbol": "MB-NI-0247"},
         {"row": 8, "symbol": "MB-GRA-0036"},
         {"row": 9, "symbol": "MB-GRA-0042"},
+        {"row": 10, "symbol": "MB-LI-0052"},
     ]
 
     if not all([FM_SERVICE_NAME, FM_SERVICE_KEY, MARKETO_BASE_URL, MARKETO_CLIENT_ID, MARKETO_CLIENT_SECRET]):

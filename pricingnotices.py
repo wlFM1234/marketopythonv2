@@ -42,6 +42,13 @@ NEWS_LOOKBACK_DAYS    = int(os.getenv("NEWS_LOOKBACK_DAYS", "2"))
 SCHEDULE_HOUR_UK      = int(os.getenv("SCHEDULE_HOUR_UK", "12"))
 MARKETO_PROGRAM_ID    = int(os.getenv("MARKETO_PROGRAM_ID", "0"))
 
+# ── Testing overrides ─────────────────────────────────────────────────────────
+# SKIP_SCHEDULE=1   -> still push tokens to Marketo but never schedule the send campaign
+# TEST_AS_OF=<ISO8601 datetime> -> pretend "now" is this moment, so the 24h fetch window
+#                                  lands on a past day's notices (e.g. yesterday's)
+SKIP_SCHEDULE         = os.getenv("SKIP_SCHEDULE", "0").strip() == "1"
+TEST_AS_OF            = os.getenv("TEST_AS_OF", "").strip()
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 FM_AUTH_URL        = "https://auth.fastmarkets.com/connect/token"
 FM_NEWS_SEARCH_URL = "https://api.fastmarkets.com/news/v3/Articles/Search"
@@ -211,13 +218,15 @@ def _news_search(token: str, params: dict, size: int = 200) -> list[dict]:
     return r.json().get("articles") or []
 
 
-def fetch_todays_pricing_notices(token: str, lookback_days: int = 2) -> list[dict]:
+def fetch_todays_pricing_notices(
+    token: str, lookback_days: int = 2, reference_time: Optional[dt.datetime] = None
+) -> list[dict]:
     """
-    Pull pricing notices published in the last 24 hours.
+    Pull pricing notices published in the 24 hours before reference_time (defaults to now).
     lookback_days controls how far back the API search window goes (keep >= 2).
     Returns articles sorted newest-first, deduplicated by articleId.
     """
-    now      = dt.datetime.now(tz=dt.timezone.utc)
+    now      = reference_time or dt.datetime.now(tz=dt.timezone.utc)
     cutoff   = now - dt.timedelta(hours=24)
     from_date = (now - dt.timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
@@ -379,9 +388,10 @@ def _clean_content(html: str) -> str:
 
 
 def render_article_html(article: dict) -> str:
-    """Render a single pricing notice preserving inline formatting from the source."""
+    """Render a single pricing notice: title, date, summary, then full body."""
     title    = _ascii_html(article.get("title") or "Pricing Notice")
-    content  = _clean_content(article.get("content") or article.get("summary") or "")
+    summary  = _clean_content(article.get("summary") or "")
+    content  = _clean_content(article.get("content") or "")
     pub      = article.get("publishedDate") or ""
     pub_disp = ""
     if pub:
@@ -392,12 +402,21 @@ def render_article_html(article: dict) -> str:
         f'<p style="margin:0 0 8px 0; font-size:12px; color:#666;">{pub_disp}</p>'
         if pub_disp else ""
     )
+    summary_line = (
+        f'<p style="margin:0 0 10px 0; font-size:14px; font-style:italic; color:#444;">{summary}</p>'
+        if summary else ""
+    )
+    content_block = (
+        f'<div style="font-size:14px; line-height:1.6;">{content}</div>'
+        if content else ""
+    )
 
     return (
         '<div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #e0e0e0;">'
         f'<p style="margin:0 0 2px 0; font-size:16px; font-weight:bold; line-height:1.3;">{title}</p>'
         f'{pub_line}'
-        f'<div style="font-size:14px; line-height:1.6;">{content}</div>'
+        f'{summary_line}'
+        f'{content_block}'
         '</div>'
     )
 
@@ -512,8 +531,17 @@ def run():
     print("--- Fastmarkets: Auth ---")
     fm_token = fm_get_news_token()
 
+    reference_time = None
+    if TEST_AS_OF:
+        reference_time = dt.datetime.fromisoformat(TEST_AS_OF)
+        if reference_time.tzinfo is None:
+            reference_time = reference_time.replace(tzinfo=dt.timezone.utc)
+        print(f"--- TEST_AS_OF set: treating 'now' as {reference_time.isoformat()} ---")
+
     print(f"--- Fetching Pricing Notices (lookback {NEWS_LOOKBACK_DAYS}d) ---")
-    articles = fetch_todays_pricing_notices(fm_token, lookback_days=NEWS_LOOKBACK_DAYS)
+    articles = fetch_todays_pricing_notices(
+        fm_token, lookback_days=NEWS_LOOKBACK_DAYS, reference_time=reference_time
+    )
 
     if not articles:
         print("No pricing notices found. Nothing to inject.")
@@ -540,8 +568,11 @@ def run():
         update_program_token(MARKETO_PROGRAM_ID, token_name, html)
         print("  Token updated.")
         if varts and sc_id:
-            schedule_smart_campaign_in(sc_id, delay_minutes=10)
-            print(f"  Campaign {sc_id} scheduled.")
+            if SKIP_SCHEDULE:
+                print(f"  SKIP_SCHEDULE=1 — not scheduling campaign {sc_id} (dry run, no email send).")
+            else:
+                schedule_smart_campaign_in(sc_id, delay_minutes=10)
+                print(f"  Campaign {sc_id} scheduled.")
 
     print("Done.")
 

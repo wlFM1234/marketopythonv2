@@ -43,12 +43,11 @@ def invalidate_mkto_token() -> None:
 
 def marketo_request(method: str, url: str, **kwargs) -> dict:
     """Make a Marketo REST API call with Bearer auth.
-
-    Automatically renews the token and retries once on error codes 601/602
-    (invalid/expired token) as required by the Marketo REST authentication spec.
+    Renews the token and retries on error codes 601/602 (invalid/expired token).
     """
     base_headers = kwargs.pop("headers", {})
-    for attempt in range(2):
+    last_error = None
+    for attempt in range(4):
         headers = {**base_headers, "Authorization": f"Bearer {get_valid_mkto_token()}"}
         r = requests.request(method, url, headers=headers, **kwargs)
         r.raise_for_status()
@@ -56,8 +55,10 @@ def marketo_request(method: str, url: str, **kwargs) -> dict:
         if j.get("success"):
             return j
         codes = {str(e.get("code")) for e in (j.get("errors") or [])}
-        if codes & {"601", "602"} and attempt == 0:
+        last_error = j
+        if codes & {"601", "602"}:
             invalidate_mkto_token()
+            time.sleep(1.5 * (attempt + 1))  # small backoff before retry
             continue
         raise RuntimeError(f"Marketo API error: {j}")
-    raise RuntimeError("Marketo API call failed after token refresh")
+    raise RuntimeError(f"Marketo API call failed after token refresh: {last_error}")

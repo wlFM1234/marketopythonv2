@@ -54,6 +54,13 @@ TILE_SYMBOLS_HARDCODED = ["MB-LI-0033", "MB-LI-0029", "MB-LI-0012"]
 
 MARKETO_MIN_INTERVAL_SEC = float(os.getenv("MARKETO_MIN_INTERVAL_SEC", "0.23"))
 
+# ── Testing overrides ─────────────────────────────────────────────────────────
+# FORCE_PUBLISH=1 -> skip the "all prices are today" polling gate and publish immediately
+# SKIP_SCHEDULE=1 -> still push tokens to Marketo and approve the draft, but never
+#                    schedule the smart campaigns (no send)
+FORCE_PUBLISH = os.getenv("FORCE_PUBLISH", "0").strip() == "1"
+SKIP_SCHEDULE = os.getenv("SKIP_SCHEDULE", "0").strip() == "1"
+
 MAX_RETRIES = 8
 _sc_ids_raw = os.getenv("MARKETO_SC_IDS", "").strip()
 if not _sc_ids_raw:
@@ -207,15 +214,18 @@ def fm_get_latest_prices(token: str, symbol: str):
         return None, None
     return prices[-1], prices[-2] if len(prices) >= 2 else None
 
-def fm_get_mtd_avg_mid(token: str, symbol: str):
-    today = dt.date.today()
-    start = today.replace(day=1)
-    prices = fm_get_prices_in_range(token, symbol, start, today)
+def fm_get_avg_mid_in_range(token: str, symbol: str, start: dt.date, end: dt.date):
+    prices = fm_get_prices_in_range(token, symbol, start, end)
     mids = [safe_mid(p) for p in prices if safe_mid(p) is not None]
     if not mids:
         return None, None
     ccy = prices[-1].get("currency") if prices else None
     return sum(mids) / len(mids), ccy
+
+def fm_get_mtd_avg_mid(token: str, symbol: str):
+    today = dt.date.today()
+    start = today.replace(day=1)
+    return fm_get_avg_mid_in_range(token, symbol, start, today)
 
 def get_price_date(row) -> dt.date | None:
     raw = row.get("date") or row.get("assessmentDate")
@@ -398,18 +408,22 @@ def run():
         raise RuntimeError("Missing .env values")
 
     # ── Polling loop ─────────────────────────────────────────────────────────
-    for attempt in range(1, MAX_RETRIES + 1):
-        print(f"\n=== Attempt {attempt}/{MAX_RETRIES}: Checking price dates ===")
+    if FORCE_PUBLISH:
+        print("FORCE_PUBLISH=1 — skipping date-check gate, publishing with latest available data.")
         fm_tok = fm_get_access_token()
+    else:
+        for attempt in range(1, MAX_RETRIES + 1):
+            print(f"\n=== Attempt {attempt}/{MAX_RETRIES}: Checking price dates ===")
+            fm_tok = fm_get_access_token()
 
-        if check_all_prices_are_today(fm_tok):
-            print("✓ All prices are today. Proceeding...")
-            break
-        else:
-            if attempt == MAX_RETRIES:
-                raise RuntimeError(f"Prices still not today after {MAX_RETRIES} attempts. Aborting.")
-            print(f"✗ Not all prices are today. Waiting 1 hour before retry...")
-            time.sleep(60 * 60)
+            if check_all_prices_are_today(fm_tok):
+                print("✓ All prices are today. Proceeding...")
+                break
+            else:
+                if attempt == MAX_RETRIES:
+                    raise RuntimeError(f"Prices still not today after {MAX_RETRIES} attempts. Aborting.")
+                print(f"✗ Not all prices are today. Waiting 1 hour before retry...")
+                time.sleep(60 * 60)
     # ─────────────────────────────────────────────────────────────────────────
 
     # ---------- Precompute table data ----------
@@ -427,6 +441,12 @@ def run():
         mtd_avg, mtd_ccy = fm_get_mtd_avg_mid(fm_tok, sy)
         mtd_sym = curr_symbol((mtd_ccy or ccy) or "")
         mtd_str = f"{mtd_sym}{mtd_avg:,.2f}" if mtd_avg is not None else "-"
+        if sy == "MB-LI-0052":
+            today = dt.date.today()
+            jul_avg, jul_ccy = fm_get_avg_mid_in_range(fm_tok, sy, dt.date(today.year, 7, 1), today)
+            jul_sym = curr_symbol((jul_ccy or ccy) or "")
+            jul_str = f"{jul_sym}{jul_avg:,.2f}" if jul_avg is not None else "-"
+            mtd_str = f"{mtd_str}<br><b><i>Avg since 1 Jul: {jul_str}</i></b>"
         table_data[r] = {
             "symbol": sy,
             "freq": freq,
@@ -506,10 +526,13 @@ def run():
         print(f"✅ Email {email_id} approved and live.")
 
     # ---------- Schedule smart campaigns ----------
-    print("--- Scheduling smart campaigns ---")
-    run_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=30)
-    for campaign_id in SMART_CAMPAIGN_IDS:
-        schedule_campaign(campaign_id, run_at)
+    if SKIP_SCHEDULE:
+        print(f"SKIP_SCHEDULE=1 — not scheduling campaigns {SMART_CAMPAIGN_IDS} (dry run, no send).")
+    else:
+        print("--- Scheduling smart campaigns ---")
+        run_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=30)
+        for campaign_id in SMART_CAMPAIGN_IDS:
+            schedule_campaign(campaign_id, run_at)
 
     print("✅ All done.")
 

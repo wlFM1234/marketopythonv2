@@ -2,6 +2,15 @@ name: BRM Prices - Marketo Email Update
 
 on:
   workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Skip the "all prices are today" gate and publish immediately'
+        type: boolean
+        default: false
+      skip_schedule:
+        description: 'Push + approve draft but do not schedule the smart campaigns (no send)'
+        type: boolean
+        default: false
   repository_dispatch:
     types: [run-brm-email]
 
@@ -32,4 +41,6 @@ jobs:
           MARKETO_EMAIL_ID: ${{ secrets.MARKETO_EMAIL_ID_BRM }}
           MARKETO_EMAIL_ID2: ${{ secrets.MARKETO_EMAIL_ID2_BRM }}
           MARKETO_SC_IDS: ${{ secrets.MARKETO_SC_IDS_BRM }}
+          FORCE_PUBLISH: ${{ inputs.force_publish && '1' || '0' }}
+          SKIP_SCHEDULE: ${{ inputs.skip_schedule && '1' || '0' }}
         run: python brmpriceupdate.py

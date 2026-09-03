@@ -1,0 +1,327 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Battery Grade Prices - Tiles Above Rationales</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+      /* ===== Layout ===== */
+      body { margin:0; padding:0; background:#f5f6f8; font-family: Arial, Helvetica, sans-serif; color:#222; }
+      .container { width:100%; background:#f5f6f8; }
+      .wrapper { width:100%; max-width:800px; margin:0 auto; } /* widened from 660px */
+      .card { background:#ffffff; border:1px solid #e5e7eb; border-radius:6px; width:100%; }
+
+      /* ===== Intro/Outro ===== */
+      .intro, .outro { padding:14px 16px; font-size:13px; line-height:1.4; }
+      .note { font-size:11px; color:#6b7280; }
+
+      /* ===== Price table (now 720px wide; text 8px as provided) ===== */
+      .table-outer { width:100%; border-collapse:collapse; }
+      .table-inner { width:720px; border-collapse:collapse; table-layout:fixed; } /* widened from 550px */
+      .table-inner th, .table-inner td {
+        border:1px solid #e5e7eb; padding:6px 6px; text-align:left;
+        font-size:8px; line-height:1.3; vertical-align:top;
+        white-space:normal; word-break:break-word; overflow-wrap:anywhere; mso-line-height-rule:exactly;
+      }
+      .table-inner th { background:#f3f4f6; font-weight:700; color:#111827; }
+
+      /* Horizontal scroll wrappers for mobile */
+      .table-scroll, .triple-scroll {
+        width:100%;
+        overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+      }
+
+      /* ===== Three-column module (tiles row + rationales row) ===== */
+      .triple-pad   { padding:16px 18px; } /* extra padding around the module */
+      .triple-inner { width:720px; border-collapse:collapse; table-layout:fixed; } /* match table width */
+      .triple-inner td { width:33.33%; vertical-align:top; border:1px solid #e5e7eb; }
+
+      /* Tiles typography - all 12px */
+      .tile-wrap   { padding:10px 12px 6px 12px; font-size:12px; }
+      .tile-title  { font-weight:700; font-size:12px; margin:0 0 2px 0; }
+      .tile-metrics{ font-weight:600; font-size:12px; }
+      .tile-sub    { color:#6b7280; font-size:12px; margin-top:4px; }
+
+      /* Rationale copy - 12px to match tiles */
+      .rat-wrap    { padding:10px 12px 12px 12px; font-size:12px; line-height:1.45; }
+
+      /* Mobile: keep tables wide and allow horizontal scroll instead of shrinking */
+      @media screen and (max-width:800px){
+        .table-inner, .triple-inner { width:auto !important; min-width:720px !important; }
+      }
+
+      /* Outlook adjustments */
+      table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    </style>
+  </head>
+  <body>
+    <table class="container" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table class="wrapper" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+
+            <!-- ========= Intro ========= -->
+            <tr>
+              <td class="card" style="padding:14px 16px; mso-padding-alt:14px 16px 14px 16px;">
+                <div class="mktoText" id="intro_text" mktoName="Intro Text">
+                  <p>Battery grade price snapshot</p>
+                  <p>Latest assessed prices and summary metrics.</p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ============ 9-column table (720px wide; first col 30%; others 8.75%) ============ -->
+            <tr>
+              <td class="card">
+                <table class="table-outer" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td align="center">
+
+                      <!-- Scroll wrapper: allows horizontal scroll on narrow screens -->
+                      <div class="table-scroll" role="region" aria-label="Battery grade prices (scroll horizontally on mobile)">
+                        <table class="table-inner" role="presentation" cellpadding="0" cellspacing="0" aria-label="Battery grade prices" style="width:720px; border-collapse:collapse; table-layout:fixed;">
+                          <colgroup>
+                            <col style="width:30%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                            <col style="width:8.75%;">
+                          </colgroup>
+                          <thead>
+                            <tr>
+                              <th>BATTERY GRADE PRICES</th>
+                              <th>Code</th>
+                              <th>Last publication</th>
+                              <th>Freq</th>
+                              <th>Current Price (Mid)</th>
+                              <th>Current Price (H-L range)</th>
+                              <th>Previous Price (Mid)</th>
+                              <th>$ change</th>
+                              <th>Month-to-date Average</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <!-- r#_c0 ... r#_c8 (rows 1-11) -->
+                            <tr>
+                              <td><div class="mktoText" id="r1_c0" mktoName="Row 1 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r1_c1" mktoName="Row 1 - Code">-</div></td>
+                              <td><div class="mktoText" id="r1_c2" mktoName="Row 1 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r1_c3" mktoName="Row 1 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r1_c4" mktoName="Row 1 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r1_c5" mktoName="Row 1 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r1_c6" mktoName="Row 1 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r1_c7" mktoName="Row 1 - % change">-</div></td>
+                              <td><div class="mktoText" id="r1_c8" mktoName="Row 1 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r2_c0" mktoName="Row 2 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r2_c1" mktoName="Row 2 - Code">-</div></td>
+                              <td><div class="mktoText" id="r2_c2" mktoName="Row 2 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r2_c3" mktoName="Row 2 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r2_c4" mktoName="Row 2 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r2_c5" mktoName="Row 2 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r2_c6" mktoName="Row 2 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r2_c7" mktoName="Row 2 - % change">-</div></td>
+                              <td><div class="mktoText" id="r2_c8" mktoName="Row 2 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r3_c0" mktoName="Row 3 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r3_c1" mktoName="Row 3 - Code">-</div></td>
+                              <td><div class="mktoText" id="r3_c2" mktoName="Row 3 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r3_c3" mktoName="Row 3 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r3_c4" mktoName="Row 3 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r3_c5" mktoName="Row 3 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r3_c6" mktoName="Row 3 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r3_c7" mktoName="Row 3 - % change">-</div></td>
+                              <td><div class="mktoText" id="r3_c8" mktoName="Row 3 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r4_c0" mktoName="Row 4 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r4_c1" mktoName="Row 4 - Code">-</div></td>
+                              <td><div class="mktoText" id="r4_c2" mktoName="Row 4 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r4_c3" mktoName="Row 4 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r4_c4" mktoName="Row 4 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r4_c5" mktoName="Row 4 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r4_c6" mktoName="Row 4 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r4_c7" mktoName="Row 4 - % change">-</div></td>
+                              <td><div class="mktoText" id="r4_c8" mktoName="Row 4 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r5_c0" mktoName="Row 5 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r5_c1" mktoName="Row 5 - Code">-</div></td>
+                              <td><div class="mktoText" id="r5_c2" mktoName="Row 5 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r5_c3" mktoName="Row 5 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r5_c4" mktoName="Row 5 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r5_c5" mktoName="Row 5 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r5_c6" mktoName="Row 5 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r5_c7" mktoName="Row 5 - % change">-</div></td>
+                              <td><div class="mktoText" id="r5_c8" mktoName="Row 5 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r6_c0" mktoName="Row 6 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r6_c1" mktoName="Row 6 - Code">-</div></td>
+                              <td><div class="mktoText" id="r6_c2" mktoName="Row 6 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r6_c3" mktoName="Row 6 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r6_c4" mktoName="Row 6 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r6_c5" mktoName="Row 6 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r6_c6" mktoName="Row 6 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r6_c7" mktoName="Row 6 - % change">-</div></td>
+                              <td><div class="mktoText" id="r6_c8" mktoName="Row 6 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r7_c0" mktoName="Row 7 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r7_c1" mktoName="Row 7 - Code">-</div></td>
+                              <td><div class="mktoText" id="r7_c2" mktoName="Row 7 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r7_c3" mktoName="Row 7 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r7_c4" mktoName="Row 7 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r7_c5" mktoName="Row 7 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r7_c6" mktoName="Row 7 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r7_c7" mktoName="Row 7 - % change">-</div></td>
+                              <td><div class="mktoText" id="r7_c8" mktoName="Row 7 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r8_c0" mktoName="Row 8 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r8_c1" mktoName="Row 8 - Code">-</div></td>
+                              <td><div class="mktoText" id="r8_c2" mktoName="Row 8 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r8_c3" mktoName="Row 8 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r8_c4" mktoName="Row 8 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r8_c5" mktoName="Row 8 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r8_c6" mktoName="Row 8 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r8_c7" mktoName="Row 8 - % change">-</div></td>
+                              <td><div class="mktoText" id="r8_c8" mktoName="Row 8 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r9_c0" mktoName="Row 9 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r9_c1" mktoName="Row 9 - Code">-</div></td>
+                              <td><div class="mktoText" id="r9_c2" mktoName="Row 9 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r9_c3" mktoName="Row 9 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r9_c4" mktoName="Row 9 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r9_c5" mktoName="Row 9 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r9_c6" mktoName="Row 9 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r9_c7" mktoName="Row 9 - % change">-</div></td>
+                              <td><div class="mktoText" id="r9_c8" mktoName="Row 9 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r10_c0" mktoName="Row 10 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r10_c1" mktoName="Row 10 - Code">-</div></td>
+                              <td><div class="mktoText" id="r10_c2" mktoName="Row 10 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r10_c3" mktoName="Row 10 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r10_c4" mktoName="Row 10 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r10_c5" mktoName="Row 10 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r10_c6" mktoName="Row 10 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r10_c7" mktoName="Row 10 - % change">-</div></td>
+                              <td><div class="mktoText" id="r10_c8" mktoName="Row 10 - Month-to-date Avg">-</div></td>
+                            </tr>
+
+                            <tr>
+                              <td><div class="mktoText" id="r11_c0" mktoName="Row 11 - Instrument">-</div></td>
+                              <td><div class="mktoText" id="r11_c1" mktoName="Row 11 - Code">-</div></td>
+                              <td><div class="mktoText" id="r11_c2" mktoName="Row 11 - Last publication">-</div></td>
+                              <td><div class="mktoText" id="r11_c3" mktoName="Row 11 - Freq">-</div></td>
+                              <td><div class="mktoText" id="r11_c4" mktoName="Row 11 - Current Mid">-</div></td>
+                              <td><div class="mktoText" id="r11_c5" mktoName="Row 11 - Current High-Low">-</div></td>
+                              <td><div class="mktoText" id="r11_c6" mktoName="Row 11 - Previous Mid">-</div></td>
+                              <td><div class="mktoText" id="r11_c7" mktoName="Row 11 - % change">-</div></td>
+                              <td><div class="mktoText" id="r11_c8" mktoName="Row 11 - Month-to-date Avg">-</div></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!-- /scroll wrapper -->
+
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- ========= Three-column module: TILES (row 1) ABOVE RATIONALES (row 2) ========= -->
+            <tr>
+              <td class="card">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td class="triple-pad" align="center" style="padding:16px 18px; mso-padding-alt:16px 18px 16px 18px;">
+                      <!-- Scroll wrapper for tiles to match table behavior on mobile -->
+                      <div class="triple-scroll" role="region" aria-label="Summary tiles (scroll horizontally on mobile)">
+                        <table class="triple-inner" role="presentation" cellpadding="0" cellspacing="0" style="width:720px; table-layout:fixed; border-collapse:collapse;">
+                          <colgroup>
+                            <col style="width:33.33%"><col style="width:33.33%"><col style="width:33.33%">
+                          </colgroup>
+
+                          <!-- Row 1: TILES -->
+                          <tr>
+                            <td style="border:1px solid #e5e7eb; vertical-align:top;">
+                              <div class="tile-wrap" style="padding:10px 12px 6px 12px; font-size:12px;">
+                                <div class="mktoText" id="tile1_code"    mktoName="Tile 1 - Code"    style="font-weight:700; font-size:12px; margin:0 0 2px 0; line-height:1.3;">-</div>
+                                <div class="mktoText" id="tile1_metrics" mktoName="Tile 1 - Metrics" style="font-weight:600; font-size:12px; line-height:1.35;">$0.00 - $0.00 | 0.0%</div>
+                                <div class="mktoText" id="tile1_pub"     mktoName="Tile 1 - Last Publication" style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.3;">-</div>
+                              </div>
+                            </td>
+                            <td style="border:1px solid #e5e7eb; vertical-align:top;">
+                              <div class="tile-wrap" style="padding:10px 12px 6px 12px; font-size:12px;">
+                                <div class="mktoText" id="tile2_code"    mktoName="Tile 2 - Code"    style="font-weight:700; font-size:12px; margin:0 0 2px 0; line-height:1.3;">-</div>
+                                <div class="mktoText" id="tile2_metrics" mktoName="Tile 2 - Metrics" style="font-weight:600; font-size:12px; line-height:1.35;">$0.00 - $0.00 | 0.0%</div>
+                                <div class="mktoText" id="tile2_pub"     mktoName="Tile 2 - Last Publication" style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.3;">-</div>
+                              </div>
+                            </td>
+                            <td style="border:1px solid #e5e7eb; vertical-align:top;">
+                              <div class="tile-wrap" style="padding:10px 12px 6px 12px; font-size:12px;">
+                                <div class="mktoText" id="tile3_code"    mktoName="Tile 3 - Code"    style="font-weight:700; font-size:12px; margin:0 0 2px 0; line-height:1.3;">-</div>
+                                <div class="mktoText" id="tile3_metrics" mktoName="Tile 3 - Metrics" style="font-weight:600; font-size:12px; line-height:1.35;">$0.00 - $0.00 | 0.0%</div>
+                                <div class="mktoText" id="tile3_pub"     mktoName="Tile 3 - Last Publication" style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.3;">-</div>
+                              </div>
+                            </td>
+                          </tr>
+
+                          <!-- Row 2: RATIONALES -->
+                          <tr>
+                            <td style="border:1px solid #e5e7eb; vertical-align:top;">
+                              <div class="mktoText" id="ttm_col1" mktoName="Triple Text Column 1" style="padding:10px 12px 12px 12px; font-size:11px; line-height:1.45;">-</div>
+                            </td>
+                            <td style="border:1px solid #e5e7eb; vertical-align:top;">
+                              <div class="mktoText" id="ttm_col2" mktoName="Triple Text Column 2" style="padding:10px 12px 12px 12px; font-size:11px; line-height:1.45;">-</div>
+                            </td>
+                            <td style="border:1px solid #e5e7eb; vertical-align:top;">
+                              <div class="mktoText" id="ttm_col3" mktoName="Triple Text Column 3" style="padding:10px 12px 12px 12px; font-size:11px; line-height:1.45;">-</div>
+                            </td>
+                          </tr>
+
+                        </table>
+                      </div>
+                      <!-- /scroll wrapper -->
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- ========= Footer ========= -->
+            <tr>
+              <td class="card" style="padding:14px 16px; mso-padding-alt:14px 16px 14px 16px;">
+                <div class="mktoText" id="footer_text" mktoName="Footer Text">
+                  <p>For methodology details, contact your Fastmarkets account team.</p>
+                  <p class="note">You are receiving this update because you subscribed to price alerts.</p>
+                </div>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

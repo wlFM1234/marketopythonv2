@@ -442,12 +442,6 @@ def run():
         mtd_avg, mtd_ccy = fm_get_mtd_avg_mid(fm_tok, sy)
         mtd_sym = curr_symbol((mtd_ccy or ccy) or "")
         mtd_str = f"{mtd_sym}{mtd_avg:,.2f}" if mtd_avg is not None else "-"
-        if sy in ("MB-LI-0052", "MB-LI-0053"):
-            today = dt.date.today()
-            jul_avg, jul_ccy = fm_get_avg_mid_in_range(fm_tok, sy, dt.date(today.year, 7, 1), today)
-            jul_sym = curr_symbol((jul_ccy or ccy) or "")
-            jul_str = f"{jul_sym}{jul_avg:,.2f}" if jul_avg is not None else "-"
-            mtd_str = f"{mtd_str}<br><b><i>Avg since 1 Jul: {jul_str}</i></b>"
         table_data[r] = {
             "symbol": sy,
             "freq": freq,

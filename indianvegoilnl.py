@@ -34,6 +34,27 @@ FM_HISTORY_URL  = "https://api.fastmarkets.com/physical/v2/Prices/History"
 class FastmarketsAuthError(Exception):
     pass
 
+def fm_request_with_retry(method: str, url: str, *, retries: int = 4, backoff: float = 3.0, **kwargs):
+    """requests.request with retry/backoff on transient network errors and 5xx responses."""
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            r = requests.request(method, url, **kwargs)
+            if r.status_code >= 500:
+                raise requests.exceptions.HTTPError(f"{r.status_code} server error", response=r)
+            return r
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.HTTPError) as exc:
+            last_exc = exc
+            if attempt == retries:
+                break
+            wait = backoff * attempt
+            print(f"  ⚠ {method} {url} failed ({exc}); retrying in {wait:.0f}s "
+                  f"(attempt {attempt}/{retries})...")
+            time.sleep(wait)
+    raise last_exc
+
 def fm_get_access_token():
     if not FM_SERVICE_NAME or not FM_SERVICE_KEY:
         raise FastmarketsAuthError("Missing FASTMARKETS_SERVICE_NAME/KEY in .env")
@@ -45,7 +66,7 @@ def fm_get_access_token():
         "serviceKey": FM_SERVICE_KEY
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    r = requests.post(FM_AUTH_URL, data=payload, headers=headers, timeout=30)
+    r = fm_request_with_retry("POST", FM_AUTH_URL, data=payload, headers=headers, timeout=30)
     r.raise_for_status()
     data = r.json()
     token = data.get("access_token")
@@ -56,9 +77,9 @@ def fm_get_access_token():
 def fm_get_instrument(access_token: str, symbol: str):
     headers = {"Authorization": f"Bearer {access_token}", "cache-control": "no-cache"}
     params  = {"symbols": symbol}
-    r = requests.get(FM_INSTR_URL, headers=headers, params=params, timeout=30)
+    r = fm_request_with_retry("GET", FM_INSTR_URL, headers=headers, params=params, timeout=30)
     if r.status_code == 405:
-        r = requests.post(FM_INSTR_URL, headers=headers, data=params, timeout=30)
+        r = fm_request_with_retry("POST", FM_INSTR_URL, headers=headers, data=params, timeout=30)
     r.raise_for_status()
     js = r.json()
     if not js.get("instruments"):
@@ -80,9 +101,9 @@ def fm_get_latest_two(access_token: str, symbol: str):
         "toDate": to_date,
         "fields": "mid,low,high,currency,assessmentDate,date"
     }
-    r = requests.get(FM_HISTORY_URL, headers=headers, data=params, timeout=45)
+    r = fm_request_with_retry("GET", FM_HISTORY_URL, headers=headers, data=params, timeout=45)
     if r.status_code == 405:
-        r = requests.post(FM_HISTORY_URL, headers=headers, data=params, timeout=45)
+        r = fm_request_with_retry("POST", FM_HISTORY_URL, headers=headers, data=params, timeout=45)
     r.raise_for_status()
     js = r.json()
     insts = js.get("instruments") or []

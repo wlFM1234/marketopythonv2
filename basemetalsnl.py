@@ -261,7 +261,7 @@ def run():
 
         inst = fm_get_instrument(fm_token, sy) or {}
         name = inst.get("name") or sy
-        uom = inst.get("uom") or ""
+        uom = inst.get("uom") or "—"
         currency = inst.get("currency") or "USD"
 
         current_month_avg, current_ccy = fm_get_current_month_avg_mid(fm_token, sy)
@@ -280,6 +280,7 @@ def run():
         }
 
         for token_name, value in mapping.items():
+            value = value if (value is not None and str(value).strip()) else "—"
             print(f"  -> {{{{my.{token_name}}}}} = {value}")
             update_program_token(MARKETO_PROGRAM_ID, token_name, value)
 

@@ -1,5 +1,5 @@
 # basemetalsnl.py
-# Pulls latest Fastmarkets base metals prices and injects them into Marketo
+# Pulls Fastmarkets base metals prices and injects them into Marketo
 # program "My Tokens" (not email content), then schedules a smart campaign
 # to send the following day.
 #
@@ -8,8 +8,8 @@
 #     Column1 = Name
 #     Column2 = UOM
 #     Column3 = Currency
-#     Column4 = Previous month Avg
-#     Column5 = % Change
+#     Column4 = Current month Avg
+#     Column5 = % Change (current month avg vs previous month avg)
 #
 # Required env / GitHub secrets:
 #   FASTMARKETS_SERVICE_NAME
@@ -43,8 +43,6 @@ MARKETO_CLIENT_ID     = os.getenv("MARKETO_CLIENT_ID", "").strip()
 MARKETO_CLIENT_SECRET = os.getenv("MARKETO_CLIENT_SECRET", "").strip()
 MARKETO_PROGRAM_ID    = int(os.getenv("MARKETO_PROGRAM_ID") or 0)
 SMART_CAMPAIGN_ID     = int(os.getenv("MARKETO_SC_ID") or 0)
-
-MAX_RETRIES = 8
 
 # Rows start at 2 (Row1 is the static header row in the template).
 ROWS = [
@@ -170,11 +168,20 @@ def safe_mid(row: dict):
     return None
 
 
-def fm_get_latest(access_token: str, symbol: str):
+def fm_get_avg_mid_in_range(access_token: str, symbol: str, start: dt.date, end: dt.date):
+    """Average mid price (and last-seen currency) over a date range."""
+    prices = fm_get_prices_in_range(access_token, symbol, start, end)
+    mids = [safe_mid(p) for p in prices if safe_mid(p) is not None]
+    if not mids:
+        return None, None
+    ccy = prices[-1].get("currency") if prices else None
+    return sum(mids) / len(mids), ccy
+
+
+def fm_get_current_month_avg_mid(access_token: str, symbol: str):
+    """Average mid price from the 1st of the current month through today."""
     today = dt.date.today()
-    from_date = today - dt.timedelta(days=60)
-    prices = fm_get_prices_in_range(access_token, symbol, from_date, today)
-    return prices[-1] if prices else None
+    return fm_get_avg_mid_in_range(access_token, symbol, today.replace(day=1), today)
 
 
 def fm_get_prev_month_avg_mid(access_token: str, symbol: str):
@@ -183,39 +190,8 @@ def fm_get_prev_month_avg_mid(access_token: str, symbol: str):
     first_of_this_month = today.replace(day=1)
     last_of_prev_month = first_of_this_month - dt.timedelta(days=1)
     first_of_prev_month = last_of_prev_month.replace(day=1)
-    prices = fm_get_prices_in_range(access_token, symbol, first_of_prev_month, last_of_prev_month)
-    mids = [safe_mid(p) for p in prices if safe_mid(p) is not None]
-    if not mids:
-        return None
-    return sum(mids) / len(mids)
-
-
-def get_price_date(row) -> dt.date | None:
-    raw = row.get("date") or row.get("assessmentDate")
-    if not raw:
-        return None
-    try:
-        if "T" in raw:
-            return dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
-        return dt.datetime.strptime(raw, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def check_all_prices_are_today(fm_token: str) -> bool:
-    today = dt.date.today()
-    for item in ROWS:
-        symbol = item["symbol"]
-        latest = fm_get_latest(fm_token, symbol)
-        if latest is None:
-            print(f"  [{symbol}] No price data found.")
-            return False
-        price_date = get_price_date(latest)
-        if price_date != today:
-            print(f"  [{symbol}] Latest price date is {price_date}, not today ({today}).")
-            return False
-        print(f"  [{symbol}] ✓ Price is today ({price_date}).")
-    return True
+    avg, _ = fm_get_avg_mid_in_range(access_token, symbol, first_of_prev_month, last_of_prev_month)
+    return avg
 
 
 def pct_change(current, previous) -> str:
@@ -276,20 +252,7 @@ def run():
     if not MARKETO_PROGRAM_ID:
         raise SystemExit("Missing MARKETO_PROGRAM_ID")
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        print(f"\n=== Attempt {attempt}/{MAX_RETRIES}: Checking price dates ===")
-        fm_token = fm_get_access_token()
-
-        if check_all_prices_are_today(fm_token):
-            print("✓ All prices are today. Updating tokens now...")
-            break
-        else:
-            if attempt == MAX_RETRIES:
-                raise RuntimeError(f"Prices still not today after {MAX_RETRIES} attempts. Aborting.")
-            print("✗ Not all prices are today. Waiting 1 hour before retry...")
-            for _ in range(12):  # 12 x 5 mins = 1 hour
-                time.sleep(5 * 60)
-                print("   ... waiting ...")
+    fm_token = fm_get_access_token()
 
     for item in ROWS:
         r  = item["row"]
@@ -297,26 +260,22 @@ def run():
         print(f"--- Row {r}: {sy} ---")
 
         inst = fm_get_instrument(fm_token, sy) or {}
-        latest = fm_get_latest(fm_token, sy)
-
         name = inst.get("name") or sy
         uom = inst.get("uom") or ""
         currency = inst.get("currency") or "USD"
-        latest_mid = None
 
-        if latest is not None:
-            currency = latest.get("currency") or currency
-            latest_mid = safe_mid(latest)
+        current_month_avg, current_ccy = fm_get_current_month_avg_mid(fm_token, sy)
+        currency = current_ccy or currency
+        current_month_avg_str = f"{current_month_avg:,.2f}" if current_month_avg is not None else "—"
 
         prev_month_avg = fm_get_prev_month_avg_mid(fm_token, sy)
-        prev_month_avg_str = f"{prev_month_avg:,.2f}" if prev_month_avg is not None else "—"
-        pct_str = pct_change(latest_mid, prev_month_avg)
+        pct_str = pct_change(current_month_avg, prev_month_avg)
 
         mapping = {
             f"Row{r}Column1": name,
             f"Row{r}Column2": uom,
             f"Row{r}Column3": currency,
-            f"Row{r}Column4": prev_month_avg_str,
+            f"Row{r}Column4": current_month_avg_str,
             f"Row{r}Column5": pct_str,
         }
 

@@ -4,12 +4,10 @@
 # to send the following day.
 #
 # Tokens updated (program-scoped, {{my.RowNColumnM}}):
-#   Row2Column1..5  ...  Row9Column1..5
+#   Row2Column1..3  ...  Row9Column1..3
 #     Column1 = Name
-#     Column2 = UOM
-#     Column3 = Currency
-#     Column4 = Current month Avg
-#     Column5 = % Change (current month avg vs previous month avg)
+#     Column2 = Last month Avg (previous full calendar month)
+#     Column3 = % Change (last month avg vs the month before)
 #
 # Required env / GitHub secrets:
 #   FASTMARKETS_SERVICE_NAME
@@ -111,7 +109,7 @@ def fm_get_access_token():
 
 
 def fm_get_instrument(access_token: str, symbol: str):
-    """Look up static instrument metadata (name, unit of measure, currency)."""
+    """Look up static instrument metadata (display name)."""
     headers = {"Authorization": f"Bearer {access_token}", "cache-control": "no-cache"}
     params = {"symbols": symbol}
     r = fm_request_with_retry("GET", FM_INSTR_URL, headers=headers, params=params, timeout=30)
@@ -124,8 +122,6 @@ def fm_get_instrument(access_token: str, symbol: str):
     inst = js["instruments"][0]
     return {
         "name": inst.get("name") or inst.get("instrumentName") or inst.get("description") or "",
-        "uom": inst.get("uom") or inst.get("unitOfMeasure") or inst.get("unit") or "",
-        "currency": inst.get("currency") or "",
     }
 
 
@@ -169,29 +165,18 @@ def safe_mid(row: dict):
 
 
 def fm_get_avg_mid_in_range(access_token: str, symbol: str, start: dt.date, end: dt.date):
-    """Average mid price (and last-seen currency) over a date range."""
     prices = fm_get_prices_in_range(access_token, symbol, start, end)
-    mids = [safe_mid(p) for p in prices if safe_mid(p) is not None]
-    if not mids:
-        return None, None
-    ccy = prices[-1].get("currency") if prices else None
-    return sum(mids) / len(mids), ccy
+    mids = [m for m in (safe_mid(p) for p in prices) if m is not None]
+    return sum(mids) / len(mids) if mids else None
 
 
-def fm_get_current_month_avg_mid(access_token: str, symbol: str):
-    """Average mid price from the 1st of the current month through today."""
-    today = dt.date.today()
-    return fm_get_avg_mid_in_range(access_token, symbol, today.replace(day=1), today)
-
-
-def fm_get_prev_month_avg_mid(access_token: str, symbol: str):
-    """Average mid price over the previous full calendar month."""
-    today = dt.date.today()
-    first_of_this_month = today.replace(day=1)
-    last_of_prev_month = first_of_this_month - dt.timedelta(days=1)
-    first_of_prev_month = last_of_prev_month.replace(day=1)
-    avg, _ = fm_get_avg_mid_in_range(access_token, symbol, first_of_prev_month, last_of_prev_month)
-    return avg
+def month_bounds(months_back: int):
+    """(first_day, last_day) of the calendar month `months_back` before the current one."""
+    first = dt.date.today().replace(day=1)
+    for _ in range(months_back):
+        first = (first - dt.timedelta(days=1)).replace(day=1)
+    next_first = (first + dt.timedelta(days=32)).replace(day=1)
+    return first, next_first - dt.timedelta(days=1)
 
 
 def pct_change(current, previous) -> str:
@@ -253,6 +238,9 @@ def run():
         raise SystemExit("Missing MARKETO_PROGRAM_ID")
 
     fm_token = fm_get_access_token()
+    last_start, last_end = month_bounds(1)
+    prior_start, prior_end = month_bounds(2)
+    print(f"Last month: {last_start} to {last_end}; month before: {prior_start} to {prior_end}")
 
     for item in ROWS:
         r  = item["row"]
@@ -261,22 +249,14 @@ def run():
 
         inst = fm_get_instrument(fm_token, sy) or {}
         name = inst.get("name") or sy
-        uom = inst.get("uom") or "—"
-        currency = inst.get("currency") or "USD"
 
-        current_month_avg, current_ccy = fm_get_current_month_avg_mid(fm_token, sy)
-        currency = current_ccy or currency
-        current_month_avg_str = f"{current_month_avg:,.2f}" if current_month_avg is not None else "—"
-
-        prev_month_avg = fm_get_prev_month_avg_mid(fm_token, sy)
-        pct_str = pct_change(current_month_avg, prev_month_avg)
+        last_avg = fm_get_avg_mid_in_range(fm_token, sy, last_start, last_end)
+        prior_avg = fm_get_avg_mid_in_range(fm_token, sy, prior_start, prior_end)
 
         mapping = {
             f"Row{r}Column1": name,
-            f"Row{r}Column2": uom,
-            f"Row{r}Column3": currency,
-            f"Row{r}Column4": current_month_avg_str,
-            f"Row{r}Column5": pct_str,
+            f"Row{r}Column2": f"{last_avg:,.2f}" if last_avg is not None else "—",
+            f"Row{r}Column3": pct_change(last_avg, prior_avg),
         }
 
         for token_name, value in mapping.items():
